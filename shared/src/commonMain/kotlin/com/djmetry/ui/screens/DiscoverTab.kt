@@ -688,15 +688,14 @@ private fun SwipeCard(artist: RankedArtist, depth: Int, onAction: (SwipeAction) 
     val offsetX = remember { Animatable(0f) }
     val offsetY = remember { Animatable(0f) }
     val isTop = depth == 0
-    val stackScale by animateFloatAsStateCompat(1f - depth * 0.05f)
-    val stackShift by animateFloatAsStateCompat(depth * 14f)
+    // Состояния (не значения): читаются только при отрисовке слоя — карточка не пересобирается каждый кадр
+    val stackScale = animateFloatAsStateCompat(1f - depth * 0.05f)
+    val stackShift = animateFloatAsStateCompat(depth * 14f)
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val width = constraints.maxWidth.toFloat()
         val coverSize = maxOf(maxWidth, maxHeight)
         val threshold = width * 0.28f
-        val dx = offsetX.value
-        val dy = offsetY.value
         // pointerInput живёт, пока не сменится артист: обработчики и ширину читаем свежими, а не с первого кадра
         // (иначе свайп после подписки в карточке артиста слал повторный follow; поворот — старый порог)
         val widthNow by rememberUpdatedState(width)
@@ -720,15 +719,20 @@ private fun SwipeCard(artist: RankedArtist, depth: Int, onAction: (SwipeAction) 
         Box(
             Modifier
                 .fillMaxSize()
+                // Сдвиг, поворот, тень и скругление — в одном слое и только на этапе отрисовки: во время свайпа и полёта
+                // карточка не пересобирается (раньше — каждый кадр целиком, рывки на iPhone 11 и старше)
                 .graphicsLayer {
-                    translationX = dx
-                    translationY = dy + stackShift.dp.toPx()
-                    rotationZ = dx / 22f
-                    scaleX = stackScale
-                    scaleY = stackScale
+                    translationX = offsetX.value
+                    translationY = offsetY.value + stackShift.value.dp.toPx()
+                    rotationZ = offsetX.value / 22f
+                    scaleX = stackScale.value
+                    scaleY = stackScale.value
+                    shadowElevation = (if (isTop) 26.dp else 10.dp).toPx()
+                    ambientShadowColor = Color.Black
+                    spotShadowColor = Color.Black
+                    shape = RoundedCornerShape(30.dp)
+                    clip = true
                 }
-                .shadow(if (isTop) 26.dp else 10.dp, RoundedCornerShape(30.dp), ambientColor = Color.Black, spotColor = Color.Black)
-                .clip(RoundedCornerShape(30.dp))
                 .background(DJMetryColors.PanelStrong)
                 .then(
                     // Тап без сдвига — карточка артиста; движение — свайп
@@ -761,9 +765,9 @@ private fun SwipeCard(artist: RankedArtist, depth: Int, onAction: (SwipeAction) 
                 if (voted) StateBadge(Icons.Filled.KeyboardDoubleArrowUp, i18n.t(Strings.DE_YOUR_VOTE), Orange)
             }
             if (isTop) {
-                Stamp(i18n.t(Strings.STAMP_FOLLOW), DJMetryColors.Accent, -14f, (dx / threshold).coerceIn(0f, 1f), Modifier.align(Alignment.TopStart).padding(22.dp))
-                Stamp(i18n.t(Strings.STAMP_SKIP), DJMetryColors.LowScore, 14f, (-dx / threshold).coerceIn(0f, 1f), Modifier.align(Alignment.TopEnd).padding(22.dp))
-                Stamp(i18n.t(Strings.STAMP_VOTE), Orange, 0f, (-dy / (threshold * 1.2f) - abs(dx) / (threshold * 2)).coerceIn(0f, 1f), Modifier.align(Alignment.Center))
+                Stamp(i18n.t(Strings.STAMP_FOLLOW), DJMetryColors.Accent, -14f, { (offsetX.value / threshold).coerceIn(0f, 1f) }, Modifier.align(Alignment.TopStart).padding(22.dp))
+                Stamp(i18n.t(Strings.STAMP_SKIP), DJMetryColors.LowScore, 14f, { (-offsetX.value / threshold).coerceIn(0f, 1f) }, Modifier.align(Alignment.TopEnd).padding(22.dp))
+                Stamp(i18n.t(Strings.STAMP_VOTE), Orange, 0f, { stampVoteAlpha(offsetX.value, offsetY.value, threshold) }, Modifier.align(Alignment.Center))
             }
 
             Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(20.dp)) {
@@ -795,15 +799,20 @@ private fun SwipeCard(artist: RankedArtist, depth: Int, onAction: (SwipeAction) 
     }
 }
 
+/** Штамп «Голос»: проявляется при свайпе вверх, гаснет при уводе вбок. */
+internal fun stampVoteAlpha(dx: Float, dy: Float, threshold: Float): Float =
+    (-dy / (threshold * 1.2f) - abs(dx) / (threshold * 2)).coerceIn(0f, 1f) + 0f
+
 @Composable
 private fun animateFloatAsStateCompat(target: Float): State<Float> =
     androidx.compose.animation.core.animateFloatAsState(target, spring(Spring.DampingRatioLowBouncy, Spring.StiffnessMediumLow), label = "stack")
 
 @Composable
-private fun Stamp(text: String, color: Color, rotation: Float, alpha: Float, modifier: Modifier) {
+private fun Stamp(text: String, color: Color, rotation: Float, alpha: () -> Float, modifier: Modifier) {
     Text(
         text, color = color, fontSize = 24.sp, fontWeight = FontWeight.Black,
-        modifier = modifier.graphicsLayer { this.alpha = alpha; rotationZ = rotation }
+        // Прозрачность читается при отрисовке: штамп проявляется за пальцем без пересборки карточки
+        modifier = modifier.graphicsLayer { this.alpha = alpha(); rotationZ = rotation }
             .border(3.dp, color, RoundedCornerShape(10.dp)).padding(horizontal = 12.dp, vertical = 4.dp),
     )
 }

@@ -367,9 +367,10 @@ private fun TypeCapsule(selected: RatingType, onSelect: (RatingType) -> Unit) {
     val labels = listOf("DJMetry", "Ambient", "DJ Mag", i18n.t(Strings.RT_YEAR_SHORT))
     BoxWithConstraints(Modifier.fillMaxWidth().widthIn(max = 640.dp).clip(CircleShape).background(DJMetryColors.Panel).padding(4.dp)) {
         val cell = maxWidth / types.size
-        val offset by animateDpAsState(cell * types.indexOf(selected), spring(dampingRatio = 0.8f, stiffness = 500f), label = "capsule")
+        val offset = animateDpAsState(cell * types.indexOf(selected), spring(dampingRatio = 0.8f, stiffness = 500f), label = "capsule")
         Box(
-            Modifier.offset(x = offset).width(cell).height(40.dp).clip(CircleShape)
+            // Сдвиг бегунка — на этапе раскладки (лямбда), а не пересборкой переключателя каждый кадр
+            Modifier.offset { androidx.compose.ui.unit.IntOffset(offset.value.roundToPx(), 0) }.width(cell).height(40.dp).clip(CircleShape)
                 .background(Brush.horizontalGradient(listOf(DJMetryColors.Accent, DJMetryColors.Accent2)))
         )
         Row(Modifier.fillMaxWidth().height(40.dp)) {
